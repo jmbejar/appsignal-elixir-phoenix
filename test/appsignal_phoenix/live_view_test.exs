@@ -422,6 +422,81 @@ defmodule Appsignal.Phoenix.LiveViewTest do
     end
   end
 
+  describe "handle_event_start/4, with a handle_event event in a live component" do
+    setup do
+      event = [:phoenix, :live_component, :handle_event, :start]
+
+      :telemetry.attach(
+        {__MODULE__, event},
+        event,
+        &Appsignal.Phoenix.LiveView.handle_event_start/4,
+        :ok
+      )
+
+      :telemetry.execute(
+        [:phoenix, :live_component, :handle_event, :start],
+        %{monotonic_time: -576_457_566_461_433_620, system_time: 1_653_474_764_790_125_080},
+        %{
+          params: %{foo: "bar"},
+          component: Appsignal.Phoenix.TestComponent,
+          socket: %Phoenix.LiveView.Socket{view: __MODULE__}
+        }
+      )
+    end
+
+    test "creates a root span with a namespace and a start time" do
+      assert {:ok, [{"live_view", nil, [start_time: 1_653_474_764_790_125_080]}]} =
+               Test.Tracer.get(:create_span)
+    end
+
+    test "sets the span's name" do
+      assert {:ok, [{%Span{}, "Appsignal.Phoenix.TestComponent#handle_event"}]} =
+               Test.Span.get(:set_name)
+    end
+
+    test "sets the span's category" do
+      assert {:ok, attributes} = Test.Span.get(:set_attribute)
+
+      assert Enum.any?(attributes, fn {%Span{}, key, data} ->
+               key == "appsignal:category" and data == "handle_event.live_view"
+             end)
+    end
+
+    test "sets the span's params" do
+      assert {:ok, attributes} = Test.Span.get(:set_sample_data)
+
+      assert Enum.any?(attributes, fn {%Span{}, key, data} ->
+               key == "params" and data == %{foo: "bar"}
+             end)
+    end
+  end
+
+  describe "handle_event_stop/4 for live components" do
+    setup do
+      event = [:phoenix, :live_component, :mount, :stop]
+
+      :telemetry.attach(
+        {__MODULE__, event},
+        event,
+        &Appsignal.Phoenix.LiveView.handle_event_stop/4,
+        :ok
+      )
+
+      Appsignal.Tracer.create_span("live_view")
+
+      :telemetry.execute(
+        [:phoenix, :live_component, :mount, :stop],
+        %{},
+        %{}
+      )
+    end
+
+    test "closes the span with an end time" do
+      assert {:ok, [{%Span{}, [end_time: 1_653_474_764_790_125_080]}]} =
+               Test.Tracer.get(:close_span)
+    end
+  end
+
   defp assert_sample_data(asserted_key, asserted_data) do
     {:ok, sample_data} = Test.Span.get(:set_sample_data)
 

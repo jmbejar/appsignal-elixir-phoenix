@@ -87,18 +87,27 @@ defmodule Appsignal.Phoenix.LiveView do
   end
 
   def handle_event_start(
-        [:phoenix, :live_view, name, :start],
+        [:phoenix, module_type, fn_name, :start],
         %{system_time: system_time},
         metadata,
         _event_name
       ) do
     "live_view"
     |> @tracer.create_span(nil, start_time: system_time)
-    |> @span.set_name("#{Appsignal.Utils.module_name(metadata[:socket].view)}##{name}")
-    |> @span.set_attribute("appsignal:category", "#{name}.live_view")
+    |> @span.set_name("#{module_name(module_type, metadata)}##{fn_name}")
+    |> @span.set_attribute("appsignal:category", "#{fn_name}.live_view")
     |> @span.set_sample_data("params", metadata[:params])
     |> @span.set_sample_data("session_data", metadata[:session])
   end
+
+  defp module_name(module_type, metadata) do
+    module_type
+    |> extract_live_module(metadata)
+    |> Appsignal.Utils.module_name()
+  end
+
+  defp extract_live_module(:live_view, metadata), do: metadata[:socket].view
+  defp extract_live_module(:live_component, metadata), do: metadata[:component]
 
   def handle_event_stop(_event, _params, _metadata, _event_name) do
     @tracer.close_span(@tracer.current_span(), end_time: @os.system_time())
